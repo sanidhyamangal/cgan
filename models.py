@@ -41,15 +41,26 @@ class GenerativeModel(tf.keras.Model):
         self.bn3 = BN()
         self.act3 = LRU()
 
-    def call(self, inputs, labels):
+    def call(self, inputs, labels, *args, **kwargs):
+        training = kwargs.pop('training', True)
+
+        # combine labels and inputs
         x = tf.concat(
             [inputs,
              self.conditional_dense(tf.one_hot(labels, depth=10))],
             axis=1)
-        x = self.act1(self.bn1(self.dense1(inputs)))
+        x = self.dense1(inputs)
+
+        x = self.act1(self.bn1(x, training=training))
         x = self.reshape(x)
-        x = self.act2(self.bn2(self.deconv1(x)))
-        x = self.act3(self.bn3(self.deconv2(x)))
+
+        # first deconv and upscaling part
+        x = self.deconv1(x)
+        x = self.act2(self.bn2(training=training))
+
+        # second deconv and upscaling layer
+        x = self.deconv2(x)
+        x = self.act3(self.bn3(x, training=training))
 
         return x
 
@@ -79,7 +90,9 @@ class DiscrimintaiveModel(tf.keras.models.Model):
         self.bn2 = BN()
         self.fc2 = FC(units=1)
 
-    def call(self, inputs, labels):
+    def call(self, inputs, labels, *args, **kwargs):
+        training = kwargs.pop('training', True)
+
         conditional_vector = self.conditional_dense(
             tf.one_hot(labels, depth=10))
         conditional_vector_conv = tf.reshape(conditional_vector,
@@ -88,12 +101,12 @@ class DiscrimintaiveModel(tf.keras.models.Model):
         x = self.conv_concat(x, conditional_vector_conv)
 
         # conv layer ops 2
-        x = self.bn1(self.conv2(x))
+        x = self.bn1(self.conv2(x), training=training)
         x = tf.reshape(x, [x.shape[0], -1])
 
         x = tf.concat([x, conditional_vector], axis=1)
 
-        x = self.bn2(self.fc1(x))
+        x = self.bn2(self.fc1(x), training=training)
 
         x = self.fc2(x)
         return x
